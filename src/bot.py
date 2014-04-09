@@ -3,6 +3,7 @@ import re
 import random
 import inspect
 import hipchat
+from time import time
 from ec2_helper import EC2Helper
 from time import sleep
 
@@ -19,24 +20,29 @@ class Bot():
     joined_rooms = {}
     actions = {}
 
+    # hipchat simple interaction object
     hipster = None
     name = 'Pancake'
 
-    _users = {}
+    rooms_users = {}
+    get_users_timeout = 5 * 60 * 1000   # 5 min
 
-    def __init__(self, api_token, rooms=False, aws=False):
+    def __init__(self, api_token, name=None, aws=False):
 
         self.hipster = hipchat.HipChat(token=api_token)
 
         self.available_rooms = dict(map(lambda x:[x['name'],x['room_id']], self.hipster.list_rooms()['rooms']))
 
-        if rooms:
-            self.joinRooms(rooms)
-
         if aws:
             self.__awsInit(aws)
 
+        if name:
+            self.name = name
+
         self.__setActions()
+
+    # Private
+    # ==================================================================
 
     def __setActions(self):
 
@@ -80,6 +86,10 @@ class Bot():
             '/gif': {
                 'action': self.__cmdRandomGIF,
                 'help': 'Get a random gif, with a optional search term (/gif keyboard cat)'
+            },
+            '/roll': {
+                'action': self.__cmdRoll,
+                'help': 'Roll a random number 0 - 100'
             },
             '/?': {
                 'action': self.__cmdAsk,
@@ -128,30 +138,34 @@ class Bot():
 
         return last_dates
 
-    def __getUser(self, room, user_id):
+    def __getUsers(self, room_name):
+        if not room_name in self.rooms_users or self.rooms_users[room_name]['time'] + self.get_users_timeout < time():
+            print('recalculate')
+            users =  self.hipster.method(
+                'rooms/show',
+                method='GET',
+                parameters={'room_id': self.joined_rooms[room_name]}
+            )['room']['participants']
 
-        if str(user_id) in self._users:
-            return self._users[str(user_id)]
-        else:
-            users = room.status()['users']
-            for user in users:
-                self._users[str(user['id'])] = user['name']
+            self.rooms_users.update({room_name: {
+                'users': users,
+                'time': time()
+            }})
 
-            if str(user_id) in self._users:
-                return self._users[str(user_id)]
+        return self.rooms_users[room_name]['users']
 
-        return 'Unknown'
+    def __mentionUser(self, username):
+        return '@' + username.replace(' ','')
 
-    def __getRandomUser(self, room):
-        users = room.status()['users']
-        usernames = []
-        for user in users:
-            if user['name'] != self.user['name']:
-                usernames.append(user['name'])
+    def __getRandomUser(self, room_name):
+        username = '@here'
+        user = random.choice(self.__getUsers(room_name))
+        if user:
+            username = self.__mentionUser(user['name'])
 
-        return random.choice(usernames)
+        return username
 
-    def __getMentionedUser(self, room, message):
+    def __getMentionedUser(self, room_name, message):
         message_parts = message.split()
         username = None
 
@@ -159,16 +173,19 @@ class Bot():
             # create regexp to find a user
             message_parts[1] = re.compile(message_parts[1], re.IGNORECASE)
 
-            users = room.status()['users']
+            users = self.__getUsers(room_name)
             usernames = []
             for user in users:
-                if user['name'] != self.user['name'] and re.search(message_parts[1], user['name']):
+                if re.search(message_parts[1], user['name']):
                     usernames.append(user['name'])
 
             if usernames:
-                username = random.choice(usernames)
+                username = self.__mentionUser(random.choice(usernames))
 
         return username
+
+    # Commands
+    # ==================================================================
 
     def __cmdHelp(self, room_name):
         message = 'Pancake bot, here are available commands:\n'
@@ -232,46 +249,43 @@ class Bot():
         self.postMessage(room_name, short_status)
         self.postMessage(room_name, message)
 
-    def __cmdBlameSomebody(self, room):
+    def __cmdBlameSomebody(self, room_name):
         message = '{}, this is your fault!'
-        username = self.__getRandomUser(room)
+        username = self.__getRandomUser(room_name)
 
-        room.speak(message.format(username))
+        self.postMessage(room_name, message.format(username))
 
     def __cmdGetPony(self, room_name):
         max = 160
         message = "http://ponyfac.es/{}/full.jpg".format(random.randint(1, max))
         self.postMessage(room_name, message)
 
-    def __cmdRPS(self, room, user_id, message):
+    def __cmdRPS(self, room_name, username, message):
 
         if 'help' in message:
-            room.speak('Rock (:punch:), Paper (:hand:), Scissors (:v:), Lizard (:dragon:), Spock (:boy:)')
-            room.speak('http://a.tgcdn.net/images/products/additional/large/db2e_lizard_spock.jpg')
+            self.postMessage(room_name, 'http://a.tgcdn.net/images/products/additional/large/db2e_lizard_spock.jpg')
             return False
 
-        username = self.__getUser(room, user_id)
-        options = [':hand:', ':v:', ':punch:', ':dragon:', ':boy: - (spock)']
-        response = '{0} - {1}'.format(username, random.choice(options))
-        room.speak(response)
+        options = ['Rock', 'Paper', 'Scissors', 'Lizard', 'Spock']
+        response = '{0} - {1}'.format(self.__mentionUser(username), random.choice(options))
+        self.postMessage(room_name, response)
 
-    def __cmdAsk(self, room, user_id):
-        username = self.__getUser(room, user_id)
+    def __cmdAsk(self, room_name, username):
         options = ['yes', 'no', 'no way!', 'yep!']
-        response = '{0}, {1}'.format(username, random.choice(options))
-        room.speak(response)
+        response = '{0}, {1}'.format(self.__mentionUser(username), random.choice(options))
+        self.postMessage(room_name, response)
 
-    def __cmdArnold(self, room, message):
+    def __cmdArnold(self, room_name, message):
         phrase = random.choice(ARNOLD_PHRASES)
 
         # try to get mentioned username
-        username = self.__getMentionedUser(room, message)
+        username = self.__getMentionedUser(room_name, message)
 
         # if not - we will get random username
         if not username:
-            username = self.__getRandomUser(room)
+            username = self.__getRandomUser(room_name)
 
-        room.speak(phrase.format(username))
+        self.postMessage(room_name, phrase.format(username))
 
     def __cmdXKCD(self, room_name):
         max_value = 1335
@@ -300,6 +314,13 @@ class Bot():
 
         else:
             self.postMessage(room_name, "Can't connect to giphy API =(")
+
+    def __cmdRoll(self, room_name, username):
+        response = '{0} rolled {1}'.format(self.__mentionUser(username), random.randint(0, 100))
+        self.postMessage(room_name, response)
+
+    # Public
+    # ==================================================================
 
     def joinRooms(self, rooms):
         self.rooms = rooms.split(',')
@@ -330,7 +351,6 @@ class Bot():
                     last_dates[room_name] = self.__getLatestDate(messages)
 
                 for message in messages:
-                    print message
 
                     if message['from']['name'] != self.name:
 
@@ -341,6 +361,9 @@ class Bot():
 
                             if 'user_id' in fields:
                                 args.update({'user_id': message['from']['user_id']})
+
+                            if 'username' in fields:
+                                args.update({'username': message['from']['name']})
 
                             if 'message' in fields:
                                 args.update({'message': message['message']})
