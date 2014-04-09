@@ -1,4 +1,4 @@
-Pancake Bot (HipChat version)
+Pancake chat bot (HipChat edition)
 ============
 
 Features:

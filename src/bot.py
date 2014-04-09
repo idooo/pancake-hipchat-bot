@@ -2,10 +2,11 @@ import requests
 import re
 import random
 import inspect
-import hipchat
 from time import time
 from ec2_helper import EC2Helper
+from simple_hipchat import HipChat
 from time import sleep
+from urllib2 import HTTPError
 
 # For Arnold
 from _arnold_phrases import ARNOLD_PHRASES
@@ -24,14 +25,20 @@ class Bot():
     hipster = None
     name = 'Pancake'
 
+    refresh_time = 6  # seconds
+
     rooms_users = {}
-    get_users_timeout = 5 * 60 * 1000   # 5 min
+    get_users_timeout = 5 * 60 # 5 min
 
     def __init__(self, api_token, name=None, aws=False):
 
-        self.hipster = hipchat.HipChat(token=api_token)
+        self.hipster = HipChat(token=api_token)
 
-        self.available_rooms = dict(map(lambda x:[x['name'],x['room_id']], self.hipster.list_rooms()['rooms']))
+        try:
+            self.available_rooms = dict(map(lambda x:[x['name'],x['room_id']], self.hipster.list_rooms()['rooms']))
+        except HTTPError:
+            print('Error! API token not specified or invalid')
+            exit()
 
         if aws:
             self.__awsInit(aws)
@@ -91,6 +98,10 @@ class Bot():
                 'action': self.__cmdRoll,
                 'help': 'Roll a random number 0 - 100'
             },
+            '/limit': {
+                'action': self.__cmdGetLimit,
+                'help': 'Get current HipChat API limit status'
+            },
             '/?': {
                 'action': self.__cmdAsk,
                 'help': 'Ask me a question'
@@ -140,7 +151,6 @@ class Bot():
 
     def __getUsers(self, room_name):
         if not room_name in self.rooms_users or self.rooms_users[room_name]['time'] + self.get_users_timeout < time():
-            print('recalculate')
             users =  self.hipster.method(
                 'rooms/show',
                 method='GET',
@@ -319,6 +329,14 @@ class Bot():
         response = '{0} rolled {1}'.format(self.__mentionUser(username), random.randint(0, 100))
         self.postMessage(room_name, response)
 
+    def __cmdGetLimit(self, room_name):
+        message = '{0}/{1} calls remaining, update in {2} seconds'.format(
+            self.hipster.limits['remaining'],
+            self.hipster.limits['limit'],
+            self.hipster.limits['reset'] - time()
+        )
+        self.postMessage(room_name, message)
+
     # Public
     # ==================================================================
 
@@ -340,38 +358,38 @@ class Bot():
 
         while True:
 
-            print '.'
+            print('.')
 
             for room_name in self.joined_rooms:
                 
-                #try:
-                messages = self.__getMessages(room_name, last_dates[room_name])
+                try:
+                    messages = self.__getMessages(room_name, last_dates[room_name])
 
-                if messages:
-                    last_dates[room_name] = self.__getLatestDate(messages)
+                    if messages:
+                        last_dates[room_name] = self.__getLatestDate(messages)
 
-                for message in messages:
+                    for message in messages:
 
-                    if message['from']['name'] != self.name:
+                        if message['from']['name'] != self.name:
 
-                        for action_name in self.actions:
+                            for action_name in self.actions:
 
-                            fields = set(inspect.getargspec(self.actions[action_name]['action'])[0])
-                            args = {'room_name': room_name}
+                                fields = set(inspect.getargspec(self.actions[action_name]['action'])[0])
+                                args = {'room_name': room_name}
 
-                            if 'user_id' in fields:
-                                args.update({'user_id': message['from']['user_id']})
+                                if 'user_id' in fields:
+                                    args.update({'user_id': message['from']['user_id']})
 
-                            if 'username' in fields:
-                                args.update({'username': message['from']['name']})
+                                if 'username' in fields:
+                                    args.update({'username': message['from']['name']})
 
-                            if 'message' in fields:
-                                args.update({'message': message['message']})
+                                if 'message' in fields:
+                                    args.update({'message': message['message']})
 
-                            if action_name in message['message']:
-                                self.actions[action_name]['action'](**args)
+                                if action_name in message['message']:
+                                    self.actions[action_name]['action'](**args)
 
-                #except Exception, e:
-                #    print str(e)
+                except Exception, e:
+                    print(str(e))
 
-            sleep(6)
+            sleep(self.refresh_time)
