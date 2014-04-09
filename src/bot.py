@@ -2,10 +2,9 @@ import requests
 import re
 import random
 import inspect
-from time import time
+from time import time,sleep
 from ec2_helper import EC2Helper
 from simple_hipchat import HipChat
-from time import sleep
 from urllib2 import HTTPError
 
 # For Arnold
