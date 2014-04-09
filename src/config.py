@@ -8,7 +8,7 @@ import inspect
 class Settings():
 
     rules = {
-        'credentials': ['api', 'url', 'room'],
+        'credentials': ['api', 'rooms'],
         'aws': ['access_key', 'secret_key']
     }
 

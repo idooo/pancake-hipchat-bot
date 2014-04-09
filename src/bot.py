@@ -18,22 +18,17 @@ class Bot():
     rooms = None
     joined_rooms = {}
     actions = {}
-    user = {}
+
+    hipster = None
+    name = 'Pancake'
 
     _users = {}
 
-    def __init__(self, url, api_key, rooms=False, aws=False):
+    def __init__(self, api_token, rooms=False, aws=False):
 
-        self.url = url
-        self.api_key = api_key
+        self.hipster = hipchat.HipChat(token=api_token)
 
-        request = Request(url, api_key)
-        self.campfire = Campfire(request)
-
-        self.account = self.campfire.account()
-        self.available_rooms = self.campfire.rooms()
-
-        self.user = self.campfire.user()
+        self.available_rooms = dict(map(lambda x:[x['name'],x['room_id']], self.hipster.list_rooms()['rooms']))
 
         if rooms:
             self.joinRooms(rooms)
@@ -98,13 +93,40 @@ class Bot():
 
         self.ec2 = EC2Helper(credentials['access_key'], credentials['secret_key'])
 
-    def __getMessages(self, messages, last_id):
-        new_messages = [];
-        for i in xrange(len(messages), 0, -1):
-            if messages[i-1]['id'] > last_id:
-                new_messages.append(messages[i-1])
+    def __getMessages(self, room_name, last_date):
+        msgs = self.hipster.method(
+            'rooms/history',
+            method='GET',
+            parameters={'room_id': self.joined_rooms[room_name], 'date': 'recent'}
+        )['messages']
+
+        new_messages = []
+        for i in xrange(len(msgs), 0, -1):
+            if msgs[i-1]['date'] > last_date:
+                new_messages.append(msgs[i-1])
 
         return new_messages
+
+    def __getLatestDate(self, messages):
+        latest_date = ''
+        for message in messages:
+            if message['date'] > latest_date:
+                latest_date = message['date']
+
+        return latest_date
+
+    def __getLatestDates(self):
+        last_dates = {}
+        for room_name in self.joined_rooms:
+            msgs = self.hipster.method(
+                'rooms/history',
+                method='GET',
+                parameters={'room_id': self.joined_rooms[room_name], 'date': 'recent'}
+            )['messages']
+
+            last_dates.update({room_name: self.__getLatestDate(msgs)})
+
+        return last_dates
 
     def __getUser(self, room, user_id):
 
@@ -148,7 +170,7 @@ class Bot():
 
         return username
 
-    def __cmdHelp(self, room):
+    def __cmdHelp(self, room_name):
         message = 'Pancake bot, here are available commands:\n'
         for action_name in self.actions.keys():
             message += action_name
@@ -156,9 +178,9 @@ class Bot():
                 message += ' - ' + self.actions[action_name]['help']
             message += '\n'
 
-        room.speak(message)
+        self.postMessage(room_name, message)
 
-    def __cmdGetRandomChuckPhrase(self, room):
+    def __cmdGetRandomChuckPhrase(self, room_name):
         message = "Can't connect to Chuck API =("
         params = {'limitTo': '[nerdy]'}
 
@@ -170,9 +192,9 @@ class Bot():
             if response['type'] == 'success':
                 message = response['value']['joke']
 
-        room.speak(message)
+        self.postMessage(room_name, message)
 
-    def __cmdGetRandomCatGIF(self, room):
+    def __cmdGetRandomCatGIF(self, room_name):
         message = "Can't connect to cat API =("
         params = {'format': 'xml', 'type': 'gif'}
 
@@ -185,12 +207,12 @@ class Bot():
             if res:
                 message = res.groups()[0]
 
-        room.speak(message)
+        self.postMessage(room_name, message)
 
-    def __cmdGetStagingStatus(self, room):
+    def __cmdGetStagingStatus(self, room_name):
 
         if not self.ec2:
-            room.speak('Can\'t connect to AWS API =(')
+            self.postMessage(room_name, 'Can\'t connect to AWS API =(')
             return False
 
         is_up = False
@@ -207,8 +229,8 @@ class Bot():
         else:
             short_status += 'STOPPED'
 
-        room.speak(short_status)
-        room.speak(message)
+        self.postMessage(room_name, short_status)
+        self.postMessage(room_name, message)
 
     def __cmdBlameSomebody(self, room):
         message = '{}, this is your fault!'
@@ -216,10 +238,10 @@ class Bot():
 
         room.speak(message.format(username))
 
-    def __cmdGetPony(self, room):
+    def __cmdGetPony(self, room_name):
         max = 160
         message = "http://ponyfac.es/{}/full.jpg".format(random.randint(1, max))
-        room.speak(message)
+        self.postMessage(room_name, message)
 
     def __cmdRPS(self, room, user_id, message):
 
@@ -251,7 +273,7 @@ class Bot():
 
         room.speak(phrase.format(username))
 
-    def __cmdXKCD(self, room):
+    def __cmdXKCD(self, room_name):
         max_value = 1335
         value = random.randint(1, max_value)
 
@@ -259,13 +281,13 @@ class Bot():
 
         if r.status_code == 200:
             response = r.json()
-            room.speak(response['img'])
-            room.speak(response['alt'])
+            self.postMessage(room_name, response['img'])
+            self.postMessage(room_name, response['alt'])
 
         else:
-            room.speak("Can't connect to xkcd API =(")
+            self.postMessage(room_name, "Can't connect to xkcd API =(")
 
-    def __cmdRandomGIF(self, room, message):
+    def __cmdRandomGIF(self, room_name, message):
         search_values = message.split('/gif', 1)
         tags = ''
         if len(search_values) == 2:
@@ -274,63 +296,59 @@ class Bot():
 
         if r.status_code == 200:
             response = r.json()
-            room.speak(response['data']['image_url'])
+            self.postMessage(room_name, response['data']['image_url'])
 
         else:
-            room.speak("Can't connect to giphy API =(")
+            self.postMessage(room_name, "Can't connect to giphy API =(")
 
     def joinRooms(self, rooms):
         self.rooms = rooms.split(',')
         for room in self.rooms:
             self.joinRoom(room)
 
-    def joinRoom(self, room):
-        self.joined_rooms.update({room: self.campfire.room(room)})
-        self.joined_rooms[room].join()
+    def joinRoom(self, room_name):
+        if room_name in self.available_rooms:
+            self.joined_rooms.update({room_name: self.available_rooms[room_name]})
+
+    def postMessage(self, room_name, message):
+        self.hipster.message_room(self.joined_rooms[room_name], self.name, message)
 
     def start(self):
 
-        last_ids = {}
-        for room_name in self.joined_rooms:
-            msgs = self.joined_rooms[room_name].recent()
-            last_ids.update({room_name: msgs[-1]['id']})
+        last_dates = self.__getLatestDates()
 
         while True:
 
             print '.'
 
-            for room in self.joined_rooms:
+            for room_name in self.joined_rooms:
                 
-                try:
-                    msgs = self.joined_rooms[room].recent()
+                #try:
+                messages = self.__getMessages(room_name, last_dates[room_name])
 
-                    messages = self.__getMessages(msgs, last_ids[room])
+                if messages:
+                    last_dates[room_name] = self.__getLatestDate(messages)
 
-                    if messages:
-                        last_ids[room] = msgs[-1]['id']
+                for message in messages:
+                    print message
 
-                    command = None
-                    for message in messages:
+                    if message['from']['name'] != self.name:
 
-                        if message['body'] and message['user_id'] != self.user['id']:
-                            for action_name in self.actions:
+                        for action_name in self.actions:
 
-                                fields = set(inspect.getargspec(self.actions[action_name]['action'])[0])
-                                args = {'room': self.joined_rooms[room]}
+                            fields = set(inspect.getargspec(self.actions[action_name]['action'])[0])
+                            args = {'room_name': room_name}
 
-                                if 'user_id' in fields:
-                                    args.update({'user_id': message['user_id']})
+                            if 'user_id' in fields:
+                                args.update({'user_id': message['from']['user_id']})
 
-                                if 'message' in fields:
-                                    args.update({'message': message['body']})
+                            if 'message' in fields:
+                                args.update({'message': message['message']})
 
-                                if action_name in message['body']:
-                                    self.actions[action_name]['action'](**args)
+                            if action_name in message['message']:
+                                self.actions[action_name]['action'](**args)
 
-                    if command:
-                        print 'command', command
+                #except Exception, e:
+                #    print str(e)
 
-                except Exception, e:
-                    print str(e)
-
-            sleep(2)
+            sleep(6)
