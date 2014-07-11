@@ -13,6 +13,7 @@ Simple bot created for fun. + [Campfire version](https://github.com/idooo/pancak
 + get random Arnold Schwarzenegger's phrase
 + get random XKCD comics (http://xkcd.com/xxxx/info.0.json)
 + get random gif by keyword (http://api.giphy.com/)
++ get random LEGO Movie quotes
 + ask bot a question
 
 Type `/help` to see all available commands and detailed description
