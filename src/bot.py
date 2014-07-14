@@ -203,7 +203,7 @@ class Bot():
         phrase = random.choice(quoteList)
 
         if "{}" not in phrase:
-            phrase = "{}, " + phrase
+            phrase = "{} " + phrase
 
         # try to get mentioned username
         username = self.__getMentionedUser(room_name, message)
