@@ -9,6 +9,8 @@ from urllib2 import HTTPError
 
 # For Arnold
 from _arnold_phrases import ARNOLD_PHRASES
+from _lego_quotes import LEGO_QUOTES
+
 
 class Bot():
 
@@ -84,6 +86,10 @@ class Bot():
             '/!': {
                 'action': self.__cmdArnold,
                 'help': 'Arnold Schwarzenegger\'s phrase (/! name)'
+            },
+            '/lego': {
+                'action': self.__cmdLego,
+                'help': 'LEGO Movie quote\'s (/lego name)'
             },
             '/xkcd': {
                 'action': self.__cmdXKCD,
@@ -193,6 +199,21 @@ class Bot():
 
         return username
 
+    def __doQuoteAtUser(self, room_name, quoteList, message):
+        phrase = random.choice(quoteList)
+
+        if "{}" not in phrase:
+            phrase = "{} " + phrase
+
+        # try to get mentioned username
+        username = self.__getMentionedUser(room_name, message)
+
+        # if not - we will get random username
+        if not username:
+            username = self.__getRandomUser(room_name)
+
+        self.postMessage(room_name, phrase.format(username))
+
     # Commands
     # ==================================================================
 
@@ -285,16 +306,10 @@ class Bot():
         self.postMessage(room_name, response)
 
     def __cmdArnold(self, room_name, message):
-        phrase = random.choice(ARNOLD_PHRASES)
+        self.__doQuoteAtUser(room_name, ARNOLD_PHRASES, message)
 
-        # try to get mentioned username
-        username = self.__getMentionedUser(room_name, message)
-
-        # if not - we will get random username
-        if not username:
-            username = self.__getRandomUser(room_name)
-
-        self.postMessage(room_name, phrase.format(username))
+    def __cmdLego(self, room_name, message):
+        self.__doQuoteAtUser(room_name, LEGO_QUOTES, message)
 
     def __cmdXKCD(self, room_name):
         max_value = 1335
