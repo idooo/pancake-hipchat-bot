@@ -205,7 +205,7 @@ class Bot():
         phrase = random.choice(quoteList)
 
         if "{}" not in phrase:
-            phrase = "{} " + phrase
+            phrase = "{}, " + phrase
 
         username = self.__getMentionedUser(room_name, message)
         # Default user to random if not found.
