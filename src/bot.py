@@ -103,6 +103,10 @@ class Bot():
                 'action': self.__cmdRoll,
                 'help': 'Roll a random number 0 - 100'
             },
+            '/tell': {
+                'action': self.__cmdTell,
+                'help': 'Tell someone something (/tell name message or /tell name message from name)'
+            },
             '/limit': {
                 'action': self.__cmdGetLimit,
                 'help': 'Get current HipChat API limit status'
@@ -156,7 +160,7 @@ class Bot():
 
     def __getUsers(self, room_name):
         if not room_name in self.rooms_users or self.rooms_users[room_name]['time'] + self.get_users_timeout < time():
-            users =  self.hipster.method(
+            users = self.hipster.method(
                 'rooms/show',
                 method='GET',
                 parameters={'room_id': self.joined_rooms[room_name]}
@@ -170,7 +174,7 @@ class Bot():
         return self.rooms_users[room_name]['users']
 
     def __mentionUser(self, username):
-        return '@' + username.replace(' ','')
+        return '@' + username.replace(' ', '')
 
     def __getRandomUser(self, room_name):
         username = '@here'
@@ -184,18 +188,16 @@ class Bot():
         message_parts = message.split()
         username = None
 
-        if len(message_parts) > 1:
-            # create regexp to find a user
-            message_parts[1] = re.compile(message_parts[1], re.IGNORECASE)
+        search = message_parts[0]
+        if len(message_parts) > 1:  # Full message, use second arg.
+            search = message_parts[1]
 
-            users = self.__getUsers(room_name)
-            usernames = []
-            for user in users:
-                if re.search(message_parts[1], user['name']):
-                    usernames.append(user['name'])
+        search = re.compile(search, re.IGNORECASE)
 
-            if usernames:
-                username = self.__mentionUser(random.choice(usernames))
+        users = self.__getUsers(room_name)
+        usernames = [user['name'] for user in users if re.search(search, user['name'])]
+        if usernames:
+            username = self.__mentionUser(random.choice(usernames))
 
         return username
 
@@ -203,12 +205,10 @@ class Bot():
         phrase = random.choice(quoteList)
 
         if "{}" not in phrase:
-            phrase = "{} " + phrase
+            phrase = "{}, " + phrase
 
-        # try to get mentioned username
         username = self.__getMentionedUser(room_name, message)
-
-        # if not - we will get random username
+        # Default user to random if not found.
         if not username:
             username = self.__getRandomUser(room_name)
 
@@ -226,6 +226,28 @@ class Bot():
             message += '\n'
 
         self.postMessage(room_name, message)
+
+    def __cmdTell(self, room_name, message):
+        message_parts = message.split()
+
+        recipient = self.__getMentionedUser(room_name, message_parts[1])
+        if not recipient:  # Default to just text.
+            recipient = message_parts[1]
+
+        # Check for "from someone" at the end.
+        if message_parts[-2].lower() == 'from':
+            sender = self.__getMentionedUser(room_name, message_parts[-1])
+            if not sender:  # Default to just text.
+                sender = message_parts[-1]
+
+            # Send message as from someone.
+            message_parts = message_parts
+            message = ' '.join(message_parts[2:-2])
+            self.postMessage(room_name, "Hey {}, {} said {}".format(recipient, sender, message))
+        else:
+            # Send message as from bot.
+            message = ' '.join(message_parts[2:])
+            self.postMessage(room_name, "Hey {}, {}".format(recipient, message))
 
     def __cmdGetRandomChuckPhrase(self, room_name):
         message = "Can't connect to Chuck API =("
@@ -367,15 +389,12 @@ class Bot():
         self.hipster.message_room(self.joined_rooms[room_name], self.name, message)
 
     def start(self):
-
         last_dates = self.__getLatestDates()
 
         while True:
-
             print('.')
 
             for room_name in self.joined_rooms:
-                
                 try:
                     messages = self.__getMessages(room_name, last_dates[room_name])
 
@@ -383,11 +402,8 @@ class Bot():
                         last_dates[room_name] = self.__getLatestDate(messages)
 
                     for message in messages:
-
                         if message['from']['name'] != self.name:
-
                             for action_name in self.actions:
-
                                 fields = set(inspect.getargspec(self.actions[action_name]['action'])[0])
                                 args = {'room_name': room_name}
 
