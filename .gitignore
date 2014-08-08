@@ -36,7 +36,6 @@ nosetests.xml
 .pydevproject
 
 .idea/
-conf/test.conf
-conf/sandbox.conf
+conf/*.conf
 
 nohup.out
