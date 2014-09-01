@@ -2,6 +2,7 @@ import requests
 import re
 import random
 import inspect
+import json
 from time import time,sleep
 from ec2_helper import EC2Helper
 from simple_hipchat import HipChat
@@ -18,6 +19,7 @@ class Bot():
     EC2_DOWN_CODE = 80
 
     ec2 = None
+    geckoboard = None
     rooms = None
     joined_rooms = {}
     actions = {}
@@ -31,7 +33,7 @@ class Bot():
     rooms_users = {}
     get_users_timeout = 5 * 60 # 5 min
 
-    def __init__(self, api_token, name=None, aws=False):
+    def __init__(self, api_token, name=None, aws=False, gecko=False):
 
         self.hipster = HipChat(token=api_token)
 
@@ -43,6 +45,8 @@ class Bot():
 
         if aws:
             self.__awsInit(aws)
+
+        self.gecko = gecko
 
         if name:
             self.name = name
@@ -110,6 +114,10 @@ class Bot():
             '/limit': {
                 'action': self.__cmdGetLimit,
                 'help': 'Get current HipChat API limit status'
+            },
+            '/board': {
+                'action': self.__cmdPostToBoard,
+                'help': 'Post message to geckoboard'
             },
             '/?': {
                 'action': self.__cmdAsk,
@@ -248,6 +256,27 @@ class Bot():
             # Send message as from bot.
             message = ' '.join(message_parts[2:])
             self.postMessage(room_name, "Hey {}, {}".format(recipient, message))
+
+    def __cmdPostToBoard(self, room_name, message):
+        message_parts = message.split(' ', 1)
+
+        if not self.gecko:
+            return self.postMessage(room_name, 'Have no credentials for geckoboard')
+
+	params = {
+            "api_key": self.gecko["api"],
+            "data": { "item":[{"text": message_parts[1],"type":0}] }
+        }
+        headers = {'Content-type': 'application/json'}
+        r = requests.post('https://push.geckoboard.com/v1/send/' + self.gecko["widget"], data=json.dumps(params), headers=headers)
+
+        if r.status_code == 200:
+            response = r.json()
+
+            if response['success']:
+                return self.postMessage(room_name, 'Message was posted to Geckoboard')
+
+        return self.postMessage(room_name, 'Something went wrong')
 
     def __cmdGetRandomChuckPhrase(self, room_name):
         message = "Can't connect to Chuck API =("

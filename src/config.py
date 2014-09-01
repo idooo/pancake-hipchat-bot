@@ -9,7 +9,8 @@ class Settings():
 
     rules = {
         'general': ['api_token', 'rooms', 'bot_name'],
-        'aws': ['access_key', 'secret_key']
+        'aws': ['access_key', 'secret_key'],
+        'geckoboard': ['api', 'widget']
     }
 
     default_conf_name = 'example.conf'
