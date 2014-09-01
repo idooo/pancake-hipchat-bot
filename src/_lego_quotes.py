@@ -135,7 +135,7 @@ LEGO_QUOTES = [
     "Is that last name butt, first name yourrr.. OH MY GOSH!",
     "Pow! Wham! Ka-zab! Eh, eh, oh, eh... First try!",
     "{}, that was awesome.",
-    "First law of the sea. Never place your rear end on a pirates face."
+    "First law of the sea. Never place your rear end on a pirates face.",
     "Cooool, talking computer!",
     "There are no movies in your area with that title.",
     "Bruce Wayne? Hahaha, who's that? Sounds like a cool guy.",
