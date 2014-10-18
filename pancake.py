@@ -19,12 +19,7 @@ if __name__ == "__main__":
     conf_name = args.config
     conf = library.config.Settings(conf_name)
 
-    bot = library.Bot(
-        conf.general['api_token'],
-        name=conf.general['bot_name'],
-        aws=conf.aws,
-        gecko=conf.geckoboard
-    )
+    bot = library.Bot(conf)
 
-    bot.joinRooms(conf.general['rooms'])
+    bot.join_rooms(conf.general['rooms'])
     bot.start()

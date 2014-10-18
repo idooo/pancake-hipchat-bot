@@ -1,28 +1,19 @@
-import requests
 import re
 import random
 import inspect
-import json
-from time import time,sleep
-from ec2_helper import EC2Helper
-from simple_hipchat import HipChat
+from time import time, sleep
 from urllib2 import HTTPError
 
-# For Arnold
-from _arnold_phrases import ARNOLD_PHRASES
-from _lego_quotes import LEGO_QUOTES
-
+from plugin_loader import PluginLoader
+from simple_hipchat import HipChat
 
 class Bot():
 
-    RE_URL = re.compile("<url>([^<]*)</url>", re.MULTILINE + re.IGNORECASE)
-    EC2_DOWN_CODE = 80
-
-    ec2 = None
-    geckoboard = None
     rooms = None
     joined_rooms = {}
     actions = {}
+
+    plugins = []
 
     # hipchat simple interaction object
     hipster = None
@@ -33,7 +24,10 @@ class Bot():
     rooms_users = {}
     get_users_timeout = 5 * 60 # 5 min
 
-    def __init__(self, api_token, name=None, aws=False, gecko=False):
+    def __init__(self, conf):
+
+        api_token = conf.general['api_token']
+        name = conf.general['bot_name']
 
         self.hipster = HipChat(token=api_token)
 
@@ -43,95 +37,54 @@ class Bot():
             print('Error! API token not specified or invalid')
             exit()
 
-        if aws:
-            self.__awsInit(aws)
-
-        self.gecko = gecko
-
         if name:
             self.name = name
 
-        self.__setActions()
+        pl = PluginLoader(conf, '/plugins')
+
+        self.plugins = pl.get_plugins()
+
+        self.__set_actions()
 
     # Private
     # ==================================================================
 
-    def __setActions(self):
+    @staticmethod
+    def __get_latest_date(messages):
+        latest_date = ''
+        for message in messages:
+            if message['date'] > latest_date:
+                latest_date = message['date']
+
+        return latest_date
+
+    @staticmethod
+    def __mention_user(username):
+        return '@' + username.replace(' ', '')
+
+    def __set_actions(self):
 
         self.actions = {
             '/help': {
-                'action': self.__cmdHelp,
+                'action': self.__cmd_help,
                 'help': 'Show this help'
             },
-            '/cat': {
-                'action': self.__cmdGetRandomCatGIF,
-                'help': 'Post random cat gif'
-            },
-            '/staging': {
-                'action': self.__cmdGetStagingStatus,
-                'help': 'Get staging servers status'
-            },
-            '/chuck': {
-                'action': self.__cmdGetRandomChuckPhrase,
-                'help': 'Post random Chuck\'s phrase'
-            },
-            '/blame': {
-                'action': self.__cmdBlameSomebody,
-                'help': 'Blame somebody'
-            },
-            '/pony': {
-                'action': self.__cmdGetPony,
-                'help': 'Post pony image'
-            },
-            '/rps': {
-                'action': self.__cmdRPS,
-                'help': 'Rock - Paper - Scissors - Lizard - Spock (type /rps help)'
-            },
-            '/!': {
-                'action': self.__cmdArnold,
-                'help': 'Arnold Schwarzenegger\'s phrase (/! name)'
-            },
-            '/lego': {
-                'action': self.__cmdLego,
-                'help': 'LEGO Movie quote\'s (/lego name)'
-            },
-            '/xkcd': {
-                'action': self.__cmdXKCD,
-                'help': 'Get random xkcd comics'
-            },
-            '/gif': {
-                'action': self.__cmdRandomGIF,
-                'help': 'Get a random gif, with a optional search term (/gif keyboard cat)'
-            },
-            '/roll': {
-                'action': self.__cmdRoll,
-                'help': 'Roll a random number 0 - 100'
-            },
-            '/tell': {
-                'action': self.__cmdTell,
-                'help': 'Tell someone something (/tell name message or /tell name message from name)'
-            },
             '/limit': {
-                'action': self.__cmdGetLimit,
+                'action': self.__cmd_get_limit,
                 'help': 'Get current HipChat API limit status'
-            },
-            '/board': {
-                'action': self.__cmdPostToBoard,
-                'help': 'Post message to geckoboard'
-            },
-            '/?': {
-                'action': self.__cmdAsk,
-                'help': 'Ask me a question'
             }
         }
 
-    def __awsInit(self, credentials):
-        if not ('secret_key' in credentials and 'access_key' in credentials):
-            return False
+        # load plugins
+        for plugin in self.plugins:
+            self.actions.update({
+                '/' + plugin.command: {
+                    'action': plugin.response,
+                    'help': plugin.help
+                }
+            })
 
-        self.ec2 = EC2Helper(credentials['access_key'], credentials['secret_key'])
-
-    def __getMessages(self, room_name, last_date):
+    def __get_messages(self, room_name, last_date):
         msgs = self.hipster.method(
             'rooms/history',
             method='GET',
@@ -145,15 +98,7 @@ class Bot():
 
         return new_messages
 
-    def __getLatestDate(self, messages):
-        latest_date = ''
-        for message in messages:
-            if message['date'] > latest_date:
-                latest_date = message['date']
-
-        return latest_date
-
-    def __getLatestDates(self):
+    def __get_latest_dates(self):
         last_dates = {}
         for room_name in self.joined_rooms:
             msgs = self.hipster.method(
@@ -162,11 +107,11 @@ class Bot():
                 parameters={'room_id': self.joined_rooms[room_name], 'date': 'recent'}
             )['messages']
 
-            last_dates.update({room_name: self.__getLatestDate(msgs)})
+            last_dates.update({room_name: self.__get_latest_date(msgs)})
 
         return last_dates
 
-    def __getUsers(self, room_name):
+    def __get_users(self, room_name):
         if not room_name in self.rooms_users or self.rooms_users[room_name]['time'] + self.get_users_timeout < time():
             users = self.hipster.method(
                 'rooms/show',
@@ -181,18 +126,15 @@ class Bot():
 
         return self.rooms_users[room_name]['users']
 
-    def __mentionUser(self, username):
-        return '@' + username.replace(' ', '')
-
-    def __getRandomUser(self, room_name):
+    def __get_random_user(self, room_name):
         username = '@here'
-        user = random.choice(self.__getUsers(room_name))
+        user = random.choice(self.__get_users(room_name))
         if user:
-            username = self.__mentionUser(user['name'])
+            username = self.__mention_user(user['name'])
 
         return username
 
-    def __getMentionedUser(self, room_name, message):
+    def __get_mentioned_user(self, room_name, message):
         message_parts = message.split()
         username = None
 
@@ -202,30 +144,17 @@ class Bot():
 
         search = re.compile(search, re.IGNORECASE)
 
-        users = self.__getUsers(room_name)
+        users = self.__get_users(room_name)
         usernames = [user['name'] for user in users if re.search(search, user['name'])]
         if usernames:
-            username = self.__mentionUser(random.choice(usernames))
+            username = self.__mention_user(random.choice(usernames))
 
         return username
-
-    def __doQuoteAtUser(self, room_name, quoteList, message):
-        phrase = random.choice(quoteList)
-
-        if "{}" not in phrase:
-            phrase = "{}, " + phrase
-
-        username = self.__getMentionedUser(room_name, message)
-        # Default user to random if not found.
-        if not username:
-            username = self.__getRandomUser(room_name)
-
-        self.postMessage(room_name, phrase.format(username))
 
     # Commands
     # ==================================================================
 
-    def __cmdHelp(self, room_name):
+    def __cmd_help(self):
         message = 'Pancake bot, here are available commands:\n'
         for action_name in self.actions.keys():
             message += action_name
@@ -233,220 +162,67 @@ class Bot():
                 message += ' - ' + self.actions[action_name]['help']
             message += '\n'
 
-        self.postMessage(room_name, message)
+        return message
 
-    def __cmdTell(self, room_name, message):
-        message_parts = message.split()
-
-        recipient = self.__getMentionedUser(room_name, message_parts[1])
-        if not recipient:  # Default to just text.
-            recipient = message_parts[1]
-
-        # Check for "from someone" at the end.
-        if message_parts[-2].lower() == 'from':
-            sender = self.__getMentionedUser(room_name, message_parts[-1])
-            if not sender:  # Default to just text.
-                sender = message_parts[-1]
-
-            # Send message as from someone.
-            message_parts = message_parts
-            message = ' '.join(message_parts[2:-2])
-            self.postMessage(room_name, "Hey {}, {} said {}".format(recipient, sender, message))
-        else:
-            # Send message as from bot.
-            message = ' '.join(message_parts[2:])
-            self.postMessage(room_name, "Hey {}, {}".format(recipient, message))
-
-    def __cmdPostToBoard(self, room_name, message):
-        message_parts = message.split(' ', 1)
-
-        if not self.gecko:
-            return self.postMessage(room_name, 'Have no credentials for geckoboard')
-
-	params = {
-            "api_key": self.gecko["api"],
-            "data": { "item":[{"text": message_parts[1],"type":0}] }
-        }
-        headers = {'Content-type': 'application/json'}
-        r = requests.post('https://push.geckoboard.com/v1/send/' + self.gecko["widget"], data=json.dumps(params), headers=headers)
-
-        if r.status_code == 200:
-            response = r.json()
-
-            if response['success']:
-                return self.postMessage(room_name, 'Message was posted to Geckoboard')
-
-        return self.postMessage(room_name, 'Something went wrong')
-
-    def __cmdGetRandomChuckPhrase(self, room_name):
-        message = "Can't connect to Chuck API =("
-        params = {'limitTo': '[nerdy]'}
-
-        r = requests.get('http://api.icndb.com/jokes/random', params=params)
-
-        if r.status_code == 200:
-            response = r.json()
-
-            if response['type'] == 'success':
-                message = response['value']['joke']
-
-        self.postMessage(room_name, message)
-
-    def __cmdGetRandomCatGIF(self, room_name):
-        message = "Can't connect to cat API =("
-        params = {'format': 'xml', 'type': 'gif'}
-
-        r = requests.get('http://thecatapi.com/api/images/get', params=params)
-
-        if r.status_code == 200:
-            response = r.text
-
-            res = re.search(self.RE_URL, response)
-            if res:
-                message = res.groups()[0]
-
-        self.postMessage(room_name, message)
-
-    def __cmdGetStagingStatus(self, room_name):
-
-        if not self.ec2:
-            self.postMessage(room_name, 'Can\'t connect to AWS API =(')
-            return False
-
-        is_up = False
-        message = ''
-        short_status = 'Staging servers status: '
-
-        instances = self.ec2.getInstanceStatuses()
-        for instance in instances:
-            is_up = is_up or instance['state_code'] != self.EC2_DOWN_CODE
-            message += instance['name'] + ': ' + instance['state'] + '\n'
-
-        if is_up:
-            short_status += 'RUNNING'
-        else:
-            short_status += 'STOPPED'
-
-        self.postMessage(room_name, short_status)
-        self.postMessage(room_name, message)
-
-    def __cmdBlameSomebody(self, room_name):
-        message = '{}, this is your fault!'
-        username = self.__getRandomUser(room_name)
-
-        self.postMessage(room_name, message.format(username))
-
-    def __cmdGetPony(self, room_name):
-        max = 160
-        message = "http://ponyfac.es/{}/full.jpg".format(random.randint(1, max))
-        self.postMessage(room_name, message)
-
-    def __cmdRPS(self, room_name, username, message):
-
-        if 'help' in message:
-            self.postMessage(room_name, 'http://a.tgcdn.net/images/products/additional/large/db2e_lizard_spock.jpg')
-            return False
-
-        options = ['Rock', 'Paper', 'Scissors', 'Lizard', 'Spock']
-        response = '{0} - {1}'.format(self.__mentionUser(username), random.choice(options))
-        self.postMessage(room_name, response)
-
-    def __cmdAsk(self, room_name, username):
-        options = ['yes', 'no', 'no way!', 'yep!']
-        response = '{0}, {1}'.format(self.__mentionUser(username), random.choice(options))
-        self.postMessage(room_name, response)
-
-    def __cmdArnold(self, room_name, message):
-        self.__doQuoteAtUser(room_name, ARNOLD_PHRASES, message)
-
-    def __cmdLego(self, room_name, message):
-        self.__doQuoteAtUser(room_name, LEGO_QUOTES, message)
-
-    def __cmdXKCD(self, room_name):
-        max_value = 1335
-        value = random.randint(1, max_value)
-
-        r = requests.get('http://xkcd.com/{}/info.0.json'.format(value))
-
-        if r.status_code == 200:
-            response = r.json()
-            self.postMessage(room_name, response['img'])
-            self.postMessage(room_name, response['alt'])
-
-        else:
-            self.postMessage(room_name, "Can't connect to xkcd API =(")
-
-    def __cmdRandomGIF(self, room_name, message):
-        search_values = message.split('/gif', 1)
-        tags = ''
-        if len(search_values) == 2:
-            tags = '+'.join(search_values[1].split())
-        r = requests.get('http://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag=' + tags)
-
-        if r.status_code == 200:
-            response = r.json()
-            self.postMessage(room_name, response['data']['image_url'])
-
-        else:
-            self.postMessage(room_name, "Can't connect to giphy API =(")
-
-    def __cmdRoll(self, room_name, username):
-        response = '{0} rolled {1}'.format(self.__mentionUser(username), random.randint(0, 100))
-        self.postMessage(room_name, response)
-
-    def __cmdGetLimit(self, room_name):
+    def __cmd_get_limit(self):
         message = '{0}/{1} calls remaining, update in {2} seconds'.format(
             self.hipster.limits['remaining'],
             self.hipster.limits['limit'],
             self.hipster.limits['reset'] - time()
         )
-        self.postMessage(room_name, message)
+
+        return message
 
     # Public
     # ==================================================================
 
-    def joinRooms(self, rooms):
+    def join_rooms(self, rooms):
         self.rooms = rooms.split(',')
         for room in self.rooms:
-            self.joinRoom(room)
+            self.join_room(room)
 
-    def joinRoom(self, room_name):
+    def join_room(self, room_name):
         if room_name in self.available_rooms:
             self.joined_rooms.update({room_name: self.available_rooms[room_name]})
 
-    def postMessage(self, room_name, message):
+    def post_message(self, room_name, message):
         self.hipster.message_room(self.joined_rooms[room_name], self.name, message)
 
-    def start(self):
-        last_dates = self.__getLatestDates()
+    def execute_action(self, action, room_name, message_object):
+        args = {}
+        fields = set(inspect.getargspec(action).args)
 
+        if 'room' in fields: args.update({'room': room_name})
+        if 'author_id' in fields: args.update({'author_id': message_object['from']['user_id']})
+        if 'author' in fields: args.update({'author': message_object['from']['name']})
+        if 'message' in fields: args.update({'message': message_object['message']})
+        if 'random_user' in fields: args.update({'random_user': self.__get_random_user(room_name)})
+        if 'mentioned_user' in fields:
+            args.update({'mentioned_user': self.__get_mentioned_user(room_name, message_object['message'])})
+
+        message = action(**args)
+
+        self.post_message(room_name, message)
+
+    def start(self):
+        last_dates = self.__get_latest_dates()
         while True:
             print('.')
 
             for room_name in self.joined_rooms:
                 try:
-                    messages = self.__getMessages(room_name, last_dates[room_name])
+                    messages = self.__get_messages(room_name, last_dates[room_name])
 
                     if messages:
-                        last_dates[room_name] = self.__getLatestDate(messages)
+                        last_dates[room_name] = self.__get_latest_date(messages)
 
                     for message in messages:
-                        if message['from']['name'] != self.name:
-                            for action_name in self.actions:
-                                fields = set(inspect.getargspec(self.actions[action_name]['action'])[0])
-                                args = {'room_name': room_name}
+                        if message['from']['name'] == self.name: continue
 
-                                if 'user_id' in fields:
-                                    args.update({'user_id': message['from']['user_id']})
-
-                                if 'username' in fields:
-                                    args.update({'username': message['from']['name']})
-
-                                if 'message' in fields:
-                                    args.update({'message': message['message']})
-
-                                if action_name in message['message']:
-                                    self.actions[action_name]['action'](**args)
+                        for action_name in self.actions:
+                            if action_name in message['message']:
+                                print("Executing action: " + action_name + " in room '" + room_name + "'")
+                                self.execute_action(self.actions[action_name]['action'], room_name, message)
 
                 except Exception, e:
                     print(str(e))
