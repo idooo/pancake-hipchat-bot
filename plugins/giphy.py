@@ -6,7 +6,7 @@ class GiphyPlugin():
     command = "gif"
 
     @staticmethod
-    def response(message):
+    def response(message, author):
         search_values = message.split('/gif', 1)
         tags = ''
         if len(search_values) == 2:
@@ -16,6 +16,10 @@ class GiphyPlugin():
 
         if r.status_code == 200:
             response = r.json()
+
+            if len(response['data']) == 0:
+                return "{}, I have no images about that!".format(author)
+
             return response['data']['image_url']
 
         else:

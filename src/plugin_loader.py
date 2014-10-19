@@ -51,7 +51,7 @@ class PluginLoader():
                         args.update({'conf': self.conf})
 
                     plugin = class_name(**args)
-                    if not hasattr(plugin, 'help') and not hasattr(plugin, 'command'):
+                    if not hasattr(plugin, 'help') or not hasattr(plugin, 'command') or len(plugin.command) == 0:
                         raise Exception("Plugin class must have 'help' and 'command' attributes")
 
                     self.__check_conflicts(plugin.command)

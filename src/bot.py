@@ -26,8 +26,8 @@ class Bot():
 
     def __init__(self, conf):
 
-        api_token = conf.general['api_token']
-        name = conf.general['bot_name']
+        api_token = conf['general']['api_token']
+        name = conf['general']['bot_name']
 
         self.hipster = HipChat(token=api_token)
 
@@ -194,15 +194,19 @@ class Bot():
 
         if 'room' in fields: args.update({'room': room_name})
         if 'author_id' in fields: args.update({'author_id': message_object['from']['user_id']})
-        if 'author' in fields: args.update({'author': message_object['from']['name']})
+        if 'author' in fields: args.update({'author': self.__mention_user(message_object['from']['name'])})
         if 'message' in fields: args.update({'message': message_object['message']})
         if 'random_user' in fields: args.update({'random_user': self.__get_random_user(room_name)})
         if 'mentioned_user' in fields:
             args.update({'mentioned_user': self.__get_mentioned_user(room_name, message_object['message'])})
 
-        message = action(**args)
+        messages = action(**args)
 
-        self.post_message(room_name, message)
+        if not isinstance(messages, list):
+            messages = [messages]
+
+        for message in messages:
+            self.post_message(room_name, message)
 
     def start(self):
         last_dates = self.__get_latest_dates()

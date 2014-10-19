@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 __project_name__ = 'Pancake chat bot (HipChat edition)'
-__version__ = '1.0'
+__version__ = '2.0.0'
 
 import argparse
 import src as library
@@ -17,9 +17,9 @@ if __name__ == "__main__":
 
     # Config to use
     conf_name = args.config
-    conf = library.config.Settings(conf_name)
+    settings = library.config.Settings(conf_name)
 
-    bot = library.Bot(conf)
+    bot = library.Bot(settings.get())
 
-    bot.join_rooms(conf.general['rooms'])
+    bot.join_rooms(settings.get('general:rooms'))
     bot.start()
