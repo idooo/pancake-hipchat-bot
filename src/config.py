@@ -7,13 +7,8 @@ import inspect
 
 class Settings():
 
-    rules = {
-        'general': ['api_token', 'rooms', 'bot_name'],
-        'aws': ['access_key', 'secret_key'],
-        'geckoboard': ['api', 'widget']
-    }
-
-    default_conf_name = 'example.conf'
+    __default_conf_name = 'example.conf'
+    __conf = {}
 
     def __init__(self, filename=False):
         """
@@ -26,7 +21,7 @@ class Settings():
         self.CONF_DIR = self.APP_DIR + 'conf/'
 
         if not filename:
-            filename = self.default_conf_name
+            filename = self.__default_conf_name
             self.FILENAME = self.CONF_DIR + filename
 
         self.CONF_NAME = filename
@@ -34,19 +29,27 @@ class Settings():
         config = ConfigParser.ConfigParser()
         config.readfp(open(self.CONF_DIR + filename))
 
-        for section in self.rules.keys():
+        for section_name in config.sections():
             data = {}
-            for item in self.rules[section]:
+            for item in config.items(section_name):
                 try:
-                    data.update({item: str(config.get(section, item)).strip()})
+                    data.update({item[0]: str(config.get(section_name, item[0])).strip()})
                 except ConfigParser.NoOptionError:
-                    data.update({item: ''})
-                except ConfigParser.NoSectionError:
-                    for option in self.rules[section]:
-                        data.update({option: False})
-                    break
+                    data.update({item[0]: None})
 
-                if data[item].lower() == 'false':
-                    data[item] = False
+                if data[item[0]].lower() == 'false':
+                    data[item[0]] = False
 
-            setattr(self, section, data)
+            self.__conf.update({
+                section_name: data
+            })
+
+    def get(self, key=None):
+        if not key: return self.__conf
+
+        try:
+            section, option = key.split(':')
+            return self.__conf[section][option]
+        except KeyError, e:
+            raise Exception("Can't find config key in file: " + str(e))
+

@@ -39,3 +39,5 @@ nosetests.xml
 conf/*.conf
 
 nohup.out
+
+conf/bot_.py
