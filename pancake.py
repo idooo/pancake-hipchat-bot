@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 __project_name__ = 'Pancake chat bot (HipChat edition)'
-__version__ = '2.0.0'
+__version__ = '2.1.0'
 
 import argparse
 import src as library
