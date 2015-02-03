@@ -14,18 +14,18 @@ Please note: it must be HipChat API version 1 key.
 #### Plugins:
 There are some builtin plugins enabled by default:
 
-+ get random cat gif (http://thecatapi.com)
-+ get staging servers status
-+ get random Chuck's geek phrase (http://api.icndb.com)
-+ get random pony picture (http://ponyfac.es/)
++ get random cat gif (thank you [thecatapi.com](http://thecatapi.com))
++ get random Chuck's geek phrase (thanks [api.icndb.com](http://api.icndb.com))
++ get random pony picture (thanks [ponyfac.es](http://ponyfac.es/))
 + play Rock-Paper-Scissors-Lizard-Spock
 + blame somebody
 + roll number from 0 to 100
 + get random Arnold Schwarzenegger's phrase
-+ get random XKCD comics (http://xkcd.com/xxxx/info.0.json)
-+ get random gif by keyword (http://api.giphy.com/)
++ get random [XKCD](http://xkcd.com) comics
++ get random gif by keyword (thank you [giphy](http://api.giphy.com/))
 + get random LEGO Movie quotes
 + ask bot a question
++ generate a meme (thanks [memecaptain.com](http://memecaptain.com) and [sassy bot](https://bitbucket.org/atlassianlabs/ac-koa-hipchat-sassy))
 
 Type `/help` to see all available commands and detailed description
 
