@@ -1,6 +1,10 @@
 import os
 import sys
 import inspect
+import logging
+
+logger = logging.getLogger('pancake')
+
 
 class PluginLoader():
 
@@ -59,13 +63,13 @@ class PluginLoader():
                     self.__plugins.append(plugin)
                     self.__plugin_names.update({plugin.command: filename})
 
-                    print("Plugin '" + filename + "' (/" + plugin.command + ") was loaded...")
+                    logger.info("Plugin '" + filename + "' (/" + plugin.command + ") was loaded...")
 
                     return True
 
             raise Exception("No class found in " + filename)
 
         except Exception, e:
-            print("Can't load plugin '" + filename + "': " + str(e))
+            logger.warning("Can't load plugin '" + filename + "': " + str(e))
 
 

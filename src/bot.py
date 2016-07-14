@@ -1,11 +1,14 @@
 import re
 import random
 import inspect
+import logging
 from time import time, sleep
 from urllib2 import HTTPError
 
 from plugin_loader import PluginLoader
 from simple_hipchat import HipChat
+
+logger = logging.getLogger('pancake')
 
 class Bot():
 
@@ -34,7 +37,7 @@ class Bot():
         try:
             self.available_rooms = dict(map(lambda x:[x['name'],x['room_id']], self.hipster.list_rooms()['rooms']))
         except HTTPError:
-            print('Error! API token not specified or invalid')
+            logger.error('Error! API token not specified or invalid')
             exit()
 
         if name:
@@ -211,7 +214,7 @@ class Bot():
     def start(self):
         last_dates = self.__get_latest_dates()
         while True:
-            print('.')
+            logger.debug('.')
 
             for room_name in self.joined_rooms:
                 try:
@@ -225,10 +228,10 @@ class Bot():
 
                         for action_name in self.actions:
                             if action_name in message['message']:
-                                print("Executing action: " + action_name + " in room '" + room_name + "'")
+                                logger.info("Executing action: " + action_name + " in room '" + room_name + "'")
                                 self.execute_action(self.actions[action_name]['action'], room_name, message)
 
                 except Exception, e:
-                    print(str(e))
+                    logger.error(str(e))
 
             sleep(self.refresh_time)

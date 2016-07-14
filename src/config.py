@@ -3,6 +3,7 @@
 import ConfigParser
 import os
 import inspect
+import logging
 
 
 class Settings():
