@@ -16,18 +16,15 @@ class Settings():
             friendly format ot access to config data
         """
 
-        self.APP_DIR = os.path.abspath(os.path.split(inspect.getfile( inspect.currentframe() ))[0]) + '/../'
-
-        self.CONF_DIR = self.APP_DIR + 'conf/'
+        self.APP_DIR = os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0]) + '/../'
 
         if not filename:
-            filename = self.__default_conf_name
-            self.FILENAME = self.CONF_DIR + filename
+            filename = self.APP_DIR + 'conf/' + self.__default_conf_name
 
         self.CONF_NAME = filename
 
         config = ConfigParser.ConfigParser()
-        config.readfp(open(self.CONF_DIR + filename))
+        config.readfp(open(filename))
 
         for section_name in config.sections():
             data = {}

@@ -6,10 +6,13 @@ Simple bot created for fun. There is also the unsupported [version](https://gith
 
 ```
 pip install -r requirements.txt
-./pancake.py -c example.conf
+./pancake.py -c ./conf/example.conf start
 ```
+
 Also you need to create an API key in HipChat administration panel and paste it in Pancake config file.
 Please note: it must be HipChat API version 1 key.
+
+Run bot with flag `--help` to see other params
 
 #### Plugins:
 There are some builtin plugins enabled by default:
